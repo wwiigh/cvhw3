@@ -1,0 +1,11 @@
+data/
+logs/
+model/
+prediction/
+experiment/
+experimentlogs/
+solution/
+pred.zip
+solution.zip
+sample-image/
+submission_example/
