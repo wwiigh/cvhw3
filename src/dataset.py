@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 from sklearn.model_selection import train_test_split
+from utils import transform
 
 def show_sample(dataset, index=None):
     if index is None:
@@ -44,10 +45,15 @@ def show_sample(dataset, index=None):
     plt.axis("off")
     plt.show()
 
+def limit_instances_by_area(masks, boxes, labels, max_instances=30):
+    areas = [mask.sum().item() for mask in masks]
+    sorted_indices = sorted(range(len(areas)), key=lambda i: -areas[i])
+    selected = sorted_indices[:max_instances]
+    return masks[selected], boxes[selected], labels[selected]
 
 class TrainDatasets(Dataset):
-    def __init__(self, imgdir, json_path, transform=None):
-        self.imgdir = imgdir
+    def __init__(self, imgdir, transform=None):
+        # self.imgdir = imgdir
         self.transform = transform
         # json_file = open(json_path,'r')
         # f =  json_file.read()   # 要先使用 read 讀取檔案
@@ -58,7 +64,7 @@ class TrainDatasets(Dataset):
 
         # for d in os.listdir(imgdir):
         #     print(name_to_id[d]["id"])
-        self.dir = [os.path.join(imgdir,d) for d in os.listdir(imgdir)]
+        self.dir = imgdir
 
     
     def __len__(self):
@@ -103,13 +109,20 @@ class TrainDatasets(Dataset):
             "boxes": boxes,
             "labels": labels,
             "masks": masks,
-            "image_id": torch.tensor([idx]),
+            "image_id": torch.tensor(idx),
             "area": (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0]),
             "iscrowd": torch.zeros((len(masks),), dtype=torch.int64),
         }
 
+        masks, boxes, labels = limit_instances_by_area(
+        target["masks"], target["boxes"], target["labels"], max_instances=30
+        )
+
         if self.transform:
             img, target = self.transform(img, target)
+
+
+        
 
         return img, target
 
@@ -189,24 +202,25 @@ def collate_fn(batch):
     return list(images), list(targets)
 
 
-def get_train_val_dataloader(imgdir, jsondir, transform=None,
+def get_train_val_dataloader(imgdir,
                          batch_size=1, shuffle=False):
     """Get train dataloader"""
-    train_dataset = TrainDatasets(imgdir, jsondir, transform=transform)
+    all_dirs = sorted([
+        os.path.join(imgdir, d) for d in os.listdir(imgdir)
+    ])
+
+    train_dirs, val_dirs = train_test_split(all_dirs, test_size=0.2, random_state=42)
+    train_dataset = TrainDatasets(train_dirs, transform=transform)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size,
-                                  shuffle=shuffle, num_workers=4,
+                                  shuffle=shuffle, num_workers=1,
                                   pin_memory=True, collate_fn=collate_fn)
-    return train_dataloader
-
-
-def get_val_dataloader(imgdir, jsondir, transform=None,
-                       batch_size=1, shuffle=False):
-    """Get val dataloader"""
-    val_dataset = ValDatasets(imgdir, jsondir, transform=transform)
+    
+    val_dataset = TrainDatasets(val_dirs, transform=None)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size,
-                                shuffle=shuffle, num_workers=4,
-                                collate_fn=collate_fn)
-    return val_dataloader
+                                  shuffle=shuffle, num_workers=1,
+                                  pin_memory=True, collate_fn=collate_fn)
+
+    return train_dataloader, val_dataloader
 
 
 def get_test_dataloader(imgdir, transform=None,
@@ -218,5 +232,5 @@ def get_test_dataloader(imgdir, transform=None,
     return test_dataloader
 
 if __name__ == "__main__":
-    dataset = TrainDatasets("data/train","data/test_image_name_to_ids.json")
-    show_sample(dataset, index=0)
+    traind_loader, val_loader = get_train_val_dataloader("data/train")
+    
