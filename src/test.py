@@ -80,4 +80,4 @@ def test(path):
 if __name__ == "__main__":
     # print("here")
 
-    test("model/exp1/exp1_9_final.pth")
+    test("model/exp1/exp1_29_final.pth")
