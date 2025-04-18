@@ -5,10 +5,10 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as maskUtils
 from model import get_model
-from dataset import get_test_dataloader
+from dataset import get_train_val_dataloader
 import numpy as np
 
-def test(path):
+def evaluate(path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 載入模型
@@ -17,19 +17,19 @@ def test(path):
     model.eval()
 
     # 載入 val 資料集
-    test_dir = "data/test_release"
-    test_json = "data/test_image_name_to_ids.json"
-    test_dataloader = get_test_dataloader(test_dir, test_json)
+    train_dir = "data/train"
+    _, val_dataloader = get_train_val_dataloader(train_dir)
 
     result = []
+    anns = []
 
     with torch.no_grad():
-        for images, id in tqdm(test_dataloader):
+        for images, targets in tqdm(val_dataloader):
             images = [img.to(device) for img in images]
             outputs = model(images)
 
             for i, output in enumerate(outputs):
-                image_id = id[0]
+                image_id = targets[i]["image_id"].item()
                 masks = output["masks"]  # [N, 1, H, W]
                 labels = output["labels"]
                 scores = output["scores"]
@@ -45,8 +45,7 @@ def test(path):
                     # RLE encode
                     rle = maskUtils.encode(np.asfortranarray(mask))
                     rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
-                    # if float(scores[j].item()) < 0.5:
-                    #     continue
+
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -62,17 +61,17 @@ def test(path):
 
     # 可以選擇把結果存下來
     import json
-    with open("test-results.json", "w") as f:
+    with open("segm_output.json", "w") as f:
         json.dump(result, f)
     # ========== Eval ==========
     # coco = COCO()  # 初始化空的 COCO
-    # coco_gt = COCO("data/train/annotations.json")
-    # coco_dt = coco_gt.loadRes(result)
+    coco_gt = COCO("annotations.json")
+    coco_dt = coco_gt.loadRes(result)
 
-    # coco_eval = COCOeval(cocoGt=coco_gt, cocoDt=coco_dt, iouType="segm")
-    # coco_eval.evaluate()
-    # coco_eval.accumulate()
-    # coco_eval.summarize()
+    coco_eval = COCOeval(cocoGt=coco_gt, cocoDt=coco_dt, iouType="segm")
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+    coco_eval.summarize()
 
     
 
@@ -80,4 +79,4 @@ def test(path):
 if __name__ == "__main__":
     # print("here")
 
-    test("model/exp1/exp1_1_final.pth")
+    evaluate("model/exp2/exp2_9_final.pth")

@@ -14,7 +14,7 @@ from model import get_model
 
 def train():
     """Start training"""
-    exp_dir = "exp1"
+    exp_dir = "exp2"
     if not os.path.exists(f"model/{exp_dir}"):
         os.makedirs(f"model/{exp_dir}")
 
@@ -23,7 +23,7 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("device:", device)
 
-    epochs = 2
+    epochs = 10
     batch_size = 1
     learning_rate = 5e-4
     weight_decay = 5e-4
