@@ -14,7 +14,7 @@ from model import get_model
 
 def train():
     """Start training"""
-    exp_dir = "exp2"
+    exp_dir = "exp1"
     if not os.path.exists(f"model/{exp_dir}"):
         os.makedirs(f"model/{exp_dir}")
 
@@ -25,10 +25,10 @@ def train():
 
     epochs = 10
     batch_size = 1
-    learning_rate = 5e-4
-    weight_decay = 5e-4
+    learning_rate = 1e-4
+    weight_decay = 1e-4
     momentum = 0.9
-
+    T_max = 50
     train_dir = "data/train"
    
     
@@ -38,15 +38,10 @@ def train():
     model = get_model().to(device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,
-                                momentum=momentum, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                     milestones=[3, 6, 9,
-                                                                 12, 15, 18],
-                                                     gamma=0.5)
+                            momentum=momentum, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max)
 
-    coco = COCO()
     scaler = torch.amp.GradScaler("cuda")
-    best_map = 0
     for epoch in range(epochs):
 
         running_loss = 0

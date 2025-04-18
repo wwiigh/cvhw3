@@ -35,14 +35,38 @@ def resize(img, target, size=(512, 512)):
     target["masks"] = torch.stack(new_masks)
     return img, target
 
+# def transform(img, target, train=True):
+#     img, target = resize(img, target, size=(512, 512))
+#     if train:
+#         if random.random() > 0.5:
+#             img = F.hflip(img)
+#             target["masks"] = target["masks"].flip(-1)
+#             target["boxes"][:, [0, 2]] = img.shape[2] - target["boxes"][:, [2, 0]]
+#     return img, target
+
+
 def transform(img, target, train=True):
     img, target = resize(img, target, size=(512, 512))
+
     if train:
         if random.random() > 0.5:
             img = F.hflip(img)
             target["masks"] = target["masks"].flip(-1)
             target["boxes"][:, [0, 2]] = img.shape[2] - target["boxes"][:, [2, 0]]
+
+        if random.random() > 0.5:
+            img = F.vflip(img)
+            target["masks"] = target["masks"].flip(-2)
+            target["boxes"][:, [1, 3]] = img.shape[1] - target["boxes"][:, [3, 1]]
+
+        if random.random() < 0.3:
+            img = F.gaussian_blur(img, kernel_size=3)
+
+        color_aug = transforms.ColorJitter(brightness=0.2, contrast=0.2)
+        img = color_aug(img)
+
     return img, target
+
 
 def get_transform(train):
     # 返回全局函數，並傳遞 train 參數

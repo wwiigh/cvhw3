@@ -41,6 +41,8 @@ def tif_to_coco(root_dir, output_json_path):
         # collect all class_n.tif files
         for f in ["class1.tif", "class2.tif", "class3.tif", "class4.tif"]:
             p = os.path.join(d,f)
+            label = f.split("class")[1].split(".")[0]
+            label = int(label)
             if os.path.isfile(p):
                 mask_path = p
                 mask = imageio.imread(mask_path)
@@ -61,7 +63,7 @@ def tif_to_coco(root_dir, output_json_path):
                     coco["annotations"].append({
                         "id": annotation_id,
                         "image_id": image_id,
-                        "category_id": 1,
+                        "category_id": label,
                         "segmentation": rle,
                         "iscrowd": 0,
                         "area": int(maskUtils.area(rle)),

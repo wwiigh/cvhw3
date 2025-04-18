@@ -45,7 +45,8 @@ def evaluate(path):
                     # RLE encode
                     rle = maskUtils.encode(np.asfortranarray(mask))
                     rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
-
+                    if float(scores[j].item()) < 0.5:
+                        continue
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -79,4 +80,4 @@ def evaluate(path):
 if __name__ == "__main__":
     # print("here")
 
-    evaluate("model/exp2/exp2_9_final.pth")
+    evaluate("model/exp1/exp1_9_final.pth")

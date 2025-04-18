@@ -83,16 +83,17 @@ class TrainDatasets(Dataset):
 
         masks = []
         boxes = []
-
+        labels = []
         for cf in class_file:
             mask = cv2.imread(cf, cv2.IMREAD_UNCHANGED)
-            
+            label = cf.split("class")[1].split(".")[0]
             ids = np.unique(mask)
             for id in ids:
                 if id == 0:
                     continue
                 binary_mask = mask == id
                 masks.append(torch.as_tensor(binary_mask, dtype=torch.uint8))
+                labels.append(int(label))
 
         masks = torch.stack(masks)
         for m in masks:
@@ -103,7 +104,8 @@ class TrainDatasets(Dataset):
             ymax = torch.max(pos[0])
             boxes.append([xmin, ymin, xmax, ymax])
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.ones((len(masks),), dtype=torch.int64)
+        labels = torch.as_tensor(labels, dtype=torch.int64)
+        # labels = torch.ones((len(masks),), dtype=torch.int64)
 
         target = {
             "boxes": boxes,
@@ -243,6 +245,7 @@ def get_test_dataloader(imgdir, jsonpath, transform=None,
     return test_dataloader
 
 if __name__ == "__main__":
-    # traind_loader, val_loader = get_train_val_dataloader("data/train")
-    test_loader = get_test_dataloader("data/test_release", "data/test_image_name_to_ids.json")
+    tmp = TrainDatasets("data/train")
+    show_sample(tmp)
+    # test_loader = get_test_dataloader("data/test_release", "data/test_image_name_to_ids.json")
     
