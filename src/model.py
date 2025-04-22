@@ -248,7 +248,7 @@ class Model(nn.Module):
         super().__init__()
         self.training = training
         # 使用自定義 backbone (含 SEBlock 的 ResNet50)
-        backbone = resnet_fpn_backbone_se_version(weights="DEFAULT", trainable_layers=3)  # 不載入不相容的預訓練權重
+        backbone = resnet_fpn_backbone_se_version(weights="DEFAULT", trainable_layers=5)  # 不載入不相容的預訓練權重
 
         self.model = MaskRCNN(backbone, num_classes=5)
 

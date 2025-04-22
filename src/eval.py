@@ -81,4 +81,4 @@ def evaluate(path):
 if __name__ == "__main__":
     # print("here")
 
-    evaluate("model/exp4/exp4_29_final.pth")
+    evaluate("model/exp5/exp5_49_final.pth")

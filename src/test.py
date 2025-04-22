@@ -47,8 +47,8 @@ def test(path):
                     rle = maskUtils.encode(np.asfortranarray(mask))
                     rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
                     if float(scores[j].item()) < 0.5:
-                        continue
-                        # pass
+                        # continue
+                        pass
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -82,4 +82,4 @@ def test(path):
 if __name__ == "__main__":
     # print("here")
 
-    test("model/exp4/exp4_29_final.pth")
+    test("model/exp5/exp5_49_final.pth")
