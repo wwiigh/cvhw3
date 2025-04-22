@@ -47,6 +47,7 @@ def evaluate(path):
                     rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
                     if float(scores[j].item()) < 0.5:
                         continue
+                        # pass
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -80,4 +81,4 @@ def evaluate(path):
 if __name__ == "__main__":
     # print("here")
 
-    evaluate("model/exp1/exp1_29_final.pth")
+    evaluate("model/exp4/exp4_29_final.pth")

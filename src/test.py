@@ -14,6 +14,7 @@ def test(path):
     # 載入模型
     model = get_model().to(device)
     model.load_state_dict(torch.load(path)['model_state_dict'])
+    print(sum(p.numel() for p in model.parameters()))
     model.eval()
 
     # 載入 val 資料集
@@ -47,6 +48,7 @@ def test(path):
                     rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
                     if float(scores[j].item()) < 0.5:
                         continue
+                        # pass
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -80,4 +82,4 @@ def test(path):
 if __name__ == "__main__":
     # print("here")
 
-    test("model/exp1/exp1_29_final.pth")
+    test("model/exp4/exp4_29_final.pth")
