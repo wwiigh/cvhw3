@@ -14,7 +14,7 @@ from model import get_model
 
 def train():
     """Start training"""
-    exp_dir = "exp5"
+    exp_dir = "exp7"
     if not os.path.exists(f"model/{exp_dir}"):
         os.makedirs(f"model/{exp_dir}")
 

@@ -9,24 +9,6 @@ from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.detection.backbone_utils import BackboneWithFPN
 from torchvision.ops.feature_pyramid_network import ExtraFPNBlock, FeaturePyramidNetwork, LastLevelMaxPool
 from torchvision.ops import misc as misc_nn_ops
-# in https://blog.csdn.net/oYeZhou/article/details/116664399
-
-class SEBlock(nn.Module):
-    def __init__(self, in_channels, reduction=16):
-        super(SEBlock, self).__init__()
-        self.pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(in_channels, in_channels // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(in_channels // reduction, in_channels, bias=False),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
@@ -53,6 +35,76 @@ def freeze_layers(resnet, trainable_layers=3):
     for name, parameter in resnet.named_parameters():
         if all([not name.startswith(layer) for layer in layers_to_train]):
             parameter.requires_grad_(False)
+
+# https://blog.csdn.net/weixin_45084253/article/details/124270271
+class ChannelAttention(nn.Module):
+    def __init__(self, in_planes, reduction=16):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+
+        self.fc = nn.Sequential(
+            nn.Conv2d(in_planes, in_planes // reduction, 1, bias=False),
+            nn.ReLU(),
+            nn.Conv2d(in_planes // reduction, in_planes, 1, bias=False)
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = self.avg_pool(x)
+        avg_out = self.fc(avg_out)
+        max_out = self.max_pool(x)
+        max_out = self.fc(max_out)
+
+        out = avg_out + max_out
+        out = self.sigmoid(out)
+        return out
+
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
+        self.conv = nn.Conv2d(2, 1, kernel_size, padding=kernel_size//2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        out = torch.cat([avg_out, max_out], dim=1)
+        out = self.conv(out)
+        out = self.sigmoid(out)
+        return out
+
+
+class CBAM(nn.Module):
+    def __init__(self, in_planes, reduction=16, kernel_size=7):
+        super(CBAM, self).__init__()
+        self.ca = ChannelAttention(in_planes, reduction)
+        self.sa = SpatialAttention(kernel_size)
+
+    def forward(self, x):
+        x = x * self.ca(x)
+        x = x * self.sa(x)
+        return x
+
+# in https://blog.csdn.net/oYeZhou/article/details/116664399
+class SEBlock(nn.Module):
+    def __init__(self, in_channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(in_channels // reduction, in_channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
+
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -89,8 +141,8 @@ class Bottleneck(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
-        self.se = SEBlock(planes * self.expansion, reduction)
-
+        # self.se = SEBlock(planes * self.expansion, reduction)
+        self.cbam = CBAM(planes * self.expansion)
     def forward(self, x):
         identity = x
 
@@ -104,10 +156,11 @@ class Bottleneck(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-        out = self.se(out)
+        # out = self.se(out)
 
         if self.downsample is not None:
             identity = self.downsample(x)
+        out = self.cbam(out)
 
         out += identity
         out = self.relu(out)
@@ -120,7 +173,13 @@ def se_resnet50_fpn(pretrained=False, weights = "DEFAULT",  norm_layer=None, tra
     weights = ResNet50_Weights.verify(weights)
     resnet = ResNet(block=Bottleneck, layers=[3, 4, 6, 3], norm_layer=norm_layer)
     resnet.load_state_dict(weights.get_state_dict(progress=True, check_hash=True), strict=False)
-
+    resnet.fc = nn.Sequential(
+            nn.Linear(2048, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 4),
+        )
     # if pretrained:
     #     # 如果你有 ImageNet pretrained weights，這裡可以手動載入
     #     state_dict = torch.hub.load_state_dict_from_url(
@@ -247,17 +306,21 @@ class Model(nn.Module):
     def __init__(self, training=True):
         super().__init__()
         self.training = training
-        # 使用自定義 backbone (含 SEBlock 的 ResNet50)
-        backbone = resnet_fpn_backbone_se_version(weights="DEFAULT", trainable_layers=5)  # 不載入不相容的預訓練權重
 
-        self.model = MaskRCNN(backbone, num_classes=5)
+        #***********************************************************************************
+
+        # 使用自定義 backbone (含 SEBlock 的 ResNet50)
+        # backbone = resnet_fpn_backbone_se_version(weights="DEFAULT", trainable_layers=3)  # 不載入不相容的預訓練權重
+
+        # self.model = MaskRCNN(backbone, num_classes=5)
+        #***********************************************************************************
 
         #***********************************************************************************
         # 0.32 USE 50 epoch and se block 0.27 no better
-        # backbone = resnet_fpn_backbone('resnet50',weights="DEFAULT", trainable_layers=3)
+        backbone = resnet_fpn_backbone('resnet50',weights="DEFAULT", trainable_layers=3)
 
-        # num_classes = 5
-        # self.model = MaskRCNN(backbone, num_classes=num_classes)
+        num_classes = 5
+        self.model = MaskRCNN(backbone, num_classes=num_classes)
         #***********************************************************************************
 
         # # 替換 mask predictor

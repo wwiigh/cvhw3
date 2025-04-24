@@ -16,6 +16,7 @@ def test(path):
     model.load_state_dict(torch.load(path)['model_state_dict'])
     print(sum(p.numel() for p in model.parameters()))
     model.eval()
+    model.model.roi_heads.detections_per_img = 1000
 
     # 載入 val 資料集
     test_dir = "data/test_release"
@@ -82,4 +83,4 @@ def test(path):
 if __name__ == "__main__":
     # print("here")
 
-    test("model/exp5/exp5_49_final.pth")
+    test("model/maskrcnn_50/exp2/exp2_19_final.pth")

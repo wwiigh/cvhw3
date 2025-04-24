@@ -13,8 +13,11 @@ def evaluate(path):
 
     # 載入模型
     model = get_model().to(device)
+
+    
     model.load_state_dict(torch.load(path)['model_state_dict'])
     model.eval()
+    model.model.roi_heads.detections_per_img = 1000
 
     # 載入 val 資料集
     train_dir = "data/train"
@@ -81,4 +84,4 @@ def evaluate(path):
 if __name__ == "__main__":
     # print("here")
 
-    evaluate("model/exp5/exp5_49_final.pth")
+    evaluate("model/maskrcnn_50/exp2/exp2_19_final.pth")
