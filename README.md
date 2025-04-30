@@ -34,7 +34,7 @@ project-root/
 ├── data/       
 │   ├── test_release/  
 │   ├── train/  
-│   └── test_image_name_to_ids.json
+│   └── test_image_name_to_ids.json  
 ├── model/  
 │   ├── pretained.pth  
 ├── annotations.json       
