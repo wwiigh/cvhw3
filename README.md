@@ -52,6 +52,7 @@ python src/train.py
 `  
 You can change the model backbone in model.py, just uncommit self.model to ResNet or MobileNet version.
 ## Performance snapshot
-![image](https://github.com/user-attachments/assets/664e9aae-8625-41b7-b005-eaac6e8cdece)
+![image](https://github.com/user-attachments/assets/6b0b8e9d-c4cd-4eef-91fc-fc18097e3c1d)
+
 
 
