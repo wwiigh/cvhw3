@@ -10,3 +10,6 @@ solution.zip
 hw3-data-release.tar.gz
 sample-image/
 submission_example/
+.vscode
+_pycache_/
+src/pointrend

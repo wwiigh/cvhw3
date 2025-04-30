@@ -11,14 +11,13 @@ import numpy as np
 def test(path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 載入模型
     model = get_model().to(device)
     model.load_state_dict(torch.load(path)['model_state_dict'])
     print(sum(p.numel() for p in model.parameters()))
+    
     model.eval()
     model.model.roi_heads.detections_per_img = 1000
 
-    # 載入 val 資料集
     test_dir = "data/test_release"
     test_json = "data/test_image_name_to_ids.json"
     test_dataloader = get_test_dataloader(test_dir, test_json)
@@ -32,23 +31,20 @@ def test(path):
 
             for i, output in enumerate(outputs):
                 image_id = id[0]
-                masks = output["masks"]  # [N, 1, H, W]
+                masks = output["masks"] 
                 labels = output["labels"]
                 scores = output["scores"]
                 boxes = output["boxes"]
 
-        # 格式化為 COCO 格式的結果
         
             
                 for j in range(len(masks)):
                     mask = masks[j, 0].cpu().numpy()
-                    mask = (mask > 0.5).astype(np.uint8)  # 二值化
+                    mask = (mask > 0.5).astype(np.uint8) 
 
-                    # RLE encode
                     rle = maskUtils.encode(np.asfortranarray(mask))
-                    rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
+                    rle["counts"] = rle["counts"].decode("utf-8")  
                     if float(scores[j].item()) < 0.5:
-                        # continue
                         pass
                     result.append({
                         "image_id": image_id,
@@ -59,28 +55,15 @@ def test(path):
                     })
 
 
-                # 如果你要計算 mAP，記得要也準備 gt anns
-                # anns.append(targets[i])
 
-
-    # 可以選擇把結果存下來
+ 
     import json
     with open("test-results.json", "w") as f:
         json.dump(result, f)
-    # ========== Eval ==========
-    # coco = COCO()  # 初始化空的 COCO
-    # coco_gt = COCO("data/train/annotations.json")
-    # coco_dt = coco_gt.loadRes(result)
-
-    # coco_eval = COCOeval(cocoGt=coco_gt, cocoDt=coco_dt, iouType="segm")
-    # coco_eval.evaluate()
-    # coco_eval.accumulate()
-    # coco_eval.summarize()
 
     
 
 
 if __name__ == "__main__":
-    # print("here")
 
-    test("model/maskrcnn_50/exp2/exp2_19_final.pth")
+    test("model/seblock_train5/exp5_49_final.pth")

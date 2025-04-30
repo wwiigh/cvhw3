@@ -9,7 +9,8 @@ from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.detection.backbone_utils import BackboneWithFPN
 from torchvision.ops.feature_pyramid_network import ExtraFPNBlock, FeaturePyramidNetwork, LastLevelMaxPool
 from torchvision.ops import misc as misc_nn_ops
-
+from torchvision.models.detection.roi_heads import RoIHeads
+import torch.nn.functional as F
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
@@ -26,15 +27,6 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
         bias=False,
         dilation=dilation,
     )
-
-
-def freeze_layers(resnet, trainable_layers=3):
-    # trainable_layers 為 0~4，決定要訓練幾層：layer4、layer3、layer2、layer1、conv1
-    layers_to_train = ["layer4", "layer3", "layer2", "layer1", "conv1"][:trainable_layers]
-
-    for name, parameter in resnet.named_parameters():
-        if all([not name.startswith(layer) for layer in layers_to_train]):
-            parameter.requires_grad_(False)
 
 # https://blog.csdn.net/weixin_45084253/article/details/124270271
 class ChannelAttention(nn.Module):
@@ -105,7 +97,6 @@ class SEBlock(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)
         return x * y.expand_as(x)
 
-
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
@@ -141,8 +132,8 @@ class Bottleneck(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
-        # self.se = SEBlock(planes * self.expansion, reduction)
-        self.cbam = CBAM(planes * self.expansion)
+        self.se = SEBlock(planes * self.expansion, reduction)
+        # self.cbam = CBAM(planes * self.expansion)
     def forward(self, x):
         identity = x
 
@@ -156,11 +147,11 @@ class Bottleneck(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-        # out = self.se(out)
+        out = self.se(out)
 
         if self.downsample is not None:
             identity = self.downsample(x)
-        out = self.cbam(out)
+        # out = self.cbam(out)
 
         out += identity
         out = self.relu(out)
@@ -169,7 +160,6 @@ class Bottleneck(nn.Module):
 
 
 def se_resnet50_fpn(pretrained=False, weights = "DEFAULT",  norm_layer=None, trainable_layers=3):
-    # Step 1: 取得原始 ResNet 模型 
     weights = ResNet50_Weights.verify(weights)
     resnet = ResNet(block=Bottleneck, layers=[3, 4, 6, 3], norm_layer=norm_layer)
     resnet.load_state_dict(weights.get_state_dict(progress=True, check_hash=True), strict=False)
@@ -180,40 +170,6 @@ def se_resnet50_fpn(pretrained=False, weights = "DEFAULT",  norm_layer=None, tra
             nn.Dropout(0.5),
             nn.Linear(256, 4),
         )
-    # if pretrained:
-    #     # 如果你有 ImageNet pretrained weights，這裡可以手動載入
-    #     state_dict = torch.hub.load_state_dict_from_url(
-    #         "https://download.pytorch.org/models/resnet50-0676ba61.pth", progress=True
-    #     )
-    #     resnet.load_state_dict(state_dict, strict=False)
-
-    # freeze_layers(resnet, trainable_layers=trainable_layers)
-    # # Step 2: 指定哪些 layers 要當作 FPN 輸出
-    # return_layers = {
-    #     "layer1": "0",  # usually res2
-    #     "layer2": "1",  # res3
-    #     "layer3": "2",  # res4
-    #     "layer4": "3",  # res5
-    # }
-
-    # in_channels_stage2 = 256
-    # in_channels_list = [
-    #     in_channels_stage2,
-    #     in_channels_stage2 * 2,
-    #     in_channels_stage2 * 4,
-    #     in_channels_stage2 * 8,
-    # ]
-    # out_channels = 256
-
-    # body = IntermediateLayerGetter(resnet, return_layers=return_layers)
-
-    # # Step 3: 包成 FPN backbone
-    # backbone = BackboneWithFPN(
-    #     body,
-    #     in_channels_list=in_channels_list,
-    #     out_channels=out_channels,
-    #     return_layers = return_layers
-    # )
 
     return resnet
 
@@ -262,11 +218,9 @@ def resnet_fpn_backbone_se_version(
             a new list of feature maps and their corresponding names. By
             default, a ``LastLevelMaxPool`` is used.
     """
-    # backbone = resnet.__dict__[backbone_name](weights=weights, norm_layer=norm_layer)
     backbone = se_resnet50_fpn(pretrained=True, weights=weights, norm_layer=norm_layer)
     return _resnet_fpn_extractor(backbone, trainable_layers, returned_layers, extra_blocks)
 
-## 接者處理 se_resnet50_fpn的邏輯確認
 
 def _resnet_fpn_extractor(
     backbone,
@@ -309,7 +263,6 @@ class Model(nn.Module):
 
         #***********************************************************************************
 
-        # 使用自定義 backbone (含 SEBlock 的 ResNet50)
         # backbone = resnet_fpn_backbone_se_version(weights="DEFAULT", trainable_layers=3)  # 不載入不相容的預訓練權重
 
         # self.model = MaskRCNN(backbone, num_classes=5)
@@ -323,12 +276,6 @@ class Model(nn.Module):
         self.model = MaskRCNN(backbone, num_classes=num_classes)
         #***********************************************************************************
 
-        # # 替換 mask predictor
-        # in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
-        # hidden_layer = 256
-        # self.model.roi_heads.mask_predictor = models.detection.mask_rcnn.MaskRCNNPredictor(
-        #     in_features_mask, hidden_layer, num_classes
-        # )
 
     def forward(self, x, target=None):
         if target is not None:
@@ -341,3 +288,6 @@ class Model(nn.Module):
 def get_model(training=True):
     """Return Model with faster rcnn"""
     return Model(training=training)
+
+if __name__ == "__main__":
+    print(get_model())

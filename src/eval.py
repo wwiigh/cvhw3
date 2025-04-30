@@ -11,7 +11,6 @@ import numpy as np
 def evaluate(path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 載入模型
     model = get_model().to(device)
 
     
@@ -19,7 +18,6 @@ def evaluate(path):
     model.eval()
     model.model.roi_heads.detections_per_img = 1000
 
-    # 載入 val 資料集
     train_dir = "data/train"
     _, val_dataloader = get_train_val_dataloader(train_dir)
 
@@ -38,19 +36,17 @@ def evaluate(path):
                 scores = output["scores"]
                 boxes = output["boxes"]
 
-        # 格式化為 COCO 格式的結果
         
             
                 for j in range(len(masks)):
                     mask = masks[j, 0].cpu().numpy()
-                    mask = (mask > 0.5).astype(np.uint8)  # 二值化
+                    mask = (mask > 0.5).astype(np.uint8) 
 
                     # RLE encode
                     rle = maskUtils.encode(np.asfortranarray(mask))
-                    rle["counts"] = rle["counts"].decode("utf-8")  # 轉成 str
+                    rle["counts"] = rle["counts"].decode("utf-8") 
                     if float(scores[j].item()) < 0.5:
                         continue
-                        # pass
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
@@ -60,16 +56,11 @@ def evaluate(path):
                     })
 
 
-                # 如果你要計算 mAP，記得要也準備 gt anns
-                # anns.append(targets[i])
 
 
-    # 可以選擇把結果存下來
     import json
     with open("segm_output.json", "w") as f:
         json.dump(result, f)
-    # ========== Eval ==========
-    # coco = COCO()  # 初始化空的 COCO
     coco_gt = COCO("annotations.json")
     coco_dt = coco_gt.loadRes(result)
 
@@ -78,10 +69,70 @@ def evaluate(path):
     coco_eval.accumulate()
     coco_eval.summarize()
 
-    
+    from collections import defaultdict
+
+    cat_ids = coco_gt.getCatIds()  # [1~10]
+    cat_id_to_idx = {cat_id: idx for idx, cat_id in enumerate(cat_ids)}
+
+    conf_matrix = np.zeros((len(cat_ids) + 1, len(cat_ids) + 1), dtype=int)
+
+    for eval_img in coco_eval.evalImgs:
+        if eval_img is None:
+            continue
+
+        gt_ids = eval_img['gtIds']
+        dt_ids = eval_img['dtIds']
+        dt_matches = eval_img['dtMatches'][0]  
+        dt_scores = eval_img['dtScores']
+        gt_ignore = eval_img['gtIgnore']
+        dt_ignore = eval_img['dtIgnore'][0]
+        if(eval_img['aRng'] != [0, 1e5**2]):
+            continue
+        for i, dt_id in enumerate(dt_ids):
+            if dt_ignore[i]:
+                continue
+
+            matched_gt_id = dt_matches[i]
+            dt_ann = coco_dt.anns.get(dt_id)
+            dt_cat = dt_ann['category_id']
+            dt_idx = cat_id_to_idx.get(dt_cat, -1)
+
+            if matched_gt_id == 0:
+                conf_matrix[-1, dt_idx] += 1
+            else:
+                gt_ann = coco_gt.anns.get(matched_gt_id)
+                gt_cat = gt_ann['category_id']
+                gt_idx = cat_id_to_idx[gt_cat]
+                conf_matrix[gt_idx, dt_idx] += 1
+
+        matched_gt_ids = set(dt_matches[dt_matches > 0])
+        for gt_id, ignore in zip(gt_ids, gt_ignore):
+            if ignore:
+                continue
+            if gt_id not in matched_gt_ids:
+                gt_ann = coco_gt.anns.get(gt_id)
+                gt_cat = gt_ann['category_id']
+                gt_idx = cat_id_to_idx[gt_cat]
+                conf_matrix[gt_idx, -1] += 1  
+
+    labels = [coco_gt.loadCats([i])[0]['name'] for i in cat_ids]
+    labels += ['background'] 
+
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(conf_matrix, annot=True, fmt='d',
+            xticklabels=labels, yticklabels=labels,
+            cmap='Blues')
+
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix (with background)")
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
-    # print("here")
 
     evaluate("model/maskrcnn_50/exp2/exp2_19_final.pth")
