@@ -3,13 +3,10 @@ import os
 import torch
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from pycocotools.cocoeval import COCOeval
-from pycocotools.coco import COCO
-from torch.cuda.amp import autocast, GradScaler
 
 from dataset import get_train_val_dataloader
-from utils import get_transform
 from model import get_model
+
 
 def train():
     """Start training"""
@@ -23,23 +20,20 @@ def train():
     print("device:", device)
 
     epochs = 50
-    batch_size = 1
     learning_rate = 1e-4
     weight_decay = 1e-4
     momentum = 0.9
     T_max = 50
     train_dir = "data/train"
-   
-    
-    
-    transform = get_transform(True)
+
     train_dataloader, val_dataloader = get_train_val_dataloader(train_dir)
     model = get_model().to(device)
- 
+
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,
-                            momentum=momentum, weight_decay=weight_decay)
+                                momentum=momentum, weight_decay=weight_decay)
     # optimizer.load_state_dict(torch.load("model/exp3/exp3_19_final.pth")['optimizer_state_dict'])
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                           T_max=T_max)
     # scheduler.load_state_dict(torch.load("model/exp3/exp3_19_final.pth")['scheduler_state_dict'])
 
     scaler = torch.amp.GradScaler("cuda")
@@ -54,13 +48,13 @@ def train():
             image = [img.to(device) for img in image]
             target = [{key: value.to(device) for key, value in t.items()}
                       for t in target]
-            
+
             optimizer.zero_grad()
             with torch.amp.autocast("cuda"):
                 output = model(image, target)
                 print(output)
                 loss = sum(loss for loss in output.values())
-            
+
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -72,7 +66,6 @@ def train():
         writer.add_scalar("Loss/epoch", running_loss/(len(train_dataloader)),
                           epoch)
 
-    
         torch.save(
                 {
                     'model_state_dict': model.state_dict(),

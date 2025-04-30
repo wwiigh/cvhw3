@@ -1,19 +1,20 @@
-import os
 import torch
 from tqdm import tqdm
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as maskUtils
+import numpy as np
+
+
 from model import get_model
 from dataset import get_train_val_dataloader
-import numpy as np
+
 
 def evaluate(path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = get_model().to(device)
 
-    
     model.load_state_dict(torch.load(path)['model_state_dict'])
     model.eval()
     model.model.roi_heads.detections_per_img = 1000
@@ -22,7 +23,6 @@ def evaluate(path):
     _, val_dataloader = get_train_val_dataloader(train_dir)
 
     result = []
-    anns = []
 
     with torch.no_grad():
         for images, targets in tqdm(val_dataloader):
@@ -36,27 +36,23 @@ def evaluate(path):
                 scores = output["scores"]
                 boxes = output["boxes"]
 
-        
-            
                 for j in range(len(masks)):
                     mask = masks[j, 0].cpu().numpy()
-                    mask = (mask > 0.5).astype(np.uint8) 
+                    mask = (mask > 0.5).astype(np.uint8)
 
-                    # RLE encode
                     rle = maskUtils.encode(np.asfortranarray(mask))
-                    rle["counts"] = rle["counts"].decode("utf-8") 
+                    rle["counts"] = rle["counts"].decode("utf-8")
                     if float(scores[j].item()) < 0.5:
                         continue
                     result.append({
                         "image_id": image_id,
                         "category_id": int(labels[j].item()),
-                        "bbox": [boxes[j][0].item(), boxes[j][1].item(), boxes[j][2].item() - boxes[j][0].item(), boxes[j][3].item() - boxes[j][1].item()],
+                        "bbox": [boxes[j][0].item(), boxes[j][1].item(),
+                                 boxes[j][2].item() - boxes[j][0].item(),
+                                 boxes[j][3].item() - boxes[j][1].item()],
                         "segmentation": rle,
                         "score": float(scores[j].item())
                     })
-
-
-
 
     import json
     with open("segm_output.json", "w") as f:
@@ -69,8 +65,6 @@ def evaluate(path):
     coco_eval.accumulate()
     coco_eval.summarize()
 
-    from collections import defaultdict
-
     cat_ids = coco_gt.getCatIds()  # [1~10]
     cat_id_to_idx = {cat_id: idx for idx, cat_id in enumerate(cat_ids)}
 
@@ -82,11 +76,10 @@ def evaluate(path):
 
         gt_ids = eval_img['gtIds']
         dt_ids = eval_img['dtIds']
-        dt_matches = eval_img['dtMatches'][0]  
-        dt_scores = eval_img['dtScores']
+        dt_matches = eval_img['dtMatches'][0]
         gt_ignore = eval_img['gtIgnore']
         dt_ignore = eval_img['dtIgnore'][0]
-        if(eval_img['aRng'] != [0, 1e5**2]):
+        if (eval_img['aRng'] != [0, 1e5**2]):
             continue
         for i, dt_id in enumerate(dt_ids):
             if dt_ignore[i]:
@@ -113,18 +106,18 @@ def evaluate(path):
                 gt_ann = coco_gt.anns.get(gt_id)
                 gt_cat = gt_ann['category_id']
                 gt_idx = cat_id_to_idx[gt_cat]
-                conf_matrix[gt_idx, -1] += 1  
+                conf_matrix[gt_idx, -1] += 1
 
     labels = [coco_gt.loadCats([i])[0]['name'] for i in cat_ids]
-    labels += ['background'] 
+    labels += ['background']
 
     import matplotlib.pyplot as plt
     import seaborn as sns
 
     plt.figure(figsize=(12, 10))
     sns.heatmap(conf_matrix, annot=True, fmt='d',
-            xticklabels=labels, yticklabels=labels,
-            cmap='Blues')
+                xticklabels=labels, yticklabels=labels,
+                cmap='Blues')
 
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
