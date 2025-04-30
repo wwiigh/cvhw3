@@ -50,7 +50,6 @@ For training, run
 `
 python src/train.py
 `  
-You can change the model backbone in model.py, just uncommit self.model to ResNet or MobileNet version.
 ## Performance snapshot
 ![image](https://github.com/user-attachments/assets/6b0b8e9d-c4cd-4eef-91fc-fc18097e3c1d)
 
